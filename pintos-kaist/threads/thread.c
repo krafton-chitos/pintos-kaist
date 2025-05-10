@@ -27,6 +27,7 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
+static struct list sleep_list; //sleep_list 추가
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -39,6 +40,9 @@ static struct lock tid_lock;
 
 /* Thread destruction requests */
 static struct list destruction_req;
+
+/* define global ticks */
+static int64_t global_ticks = INT64_MAX;
 
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
@@ -63,6 +67,8 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 
+int64_t get_global_ticks(void);
+void thread_sleep(int64_t ticks);
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
@@ -108,6 +114,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&sleep_list); // sleep_list 초기화
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -308,6 +315,46 @@ thread_yield (void) {
 	intr_set_level (old_level);
 }
 
+bool cmp_wakeup_tick(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+	return list_entry(a, struct thread, elem)-> wakeup_tick < 
+	list_entry(b, struct thread, elem)->wakeup_tick;
+}
+
+void
+thread_sleep(int64_t ticks){
+	 /* 현재 스레드가 idle이 아니면
+     - 상태를 BLOCKED로 바꾸고
+     - wakeup_tick을 저장하고
+     - global_tick을 갱신하고
+     - schedule()을 호출한다.
+     - 리스트를 다룰 땐 반드시 인터럽트를 disable할 것! */
+	enum intr_level old_level = intr_disable();
+	struct thread *cur = thread_current();
+
+	if(cur != idle_thread){
+		cur -> wakeup_tick = ticks;
+		list_insert_ordered(&sleep_list, &cur->elem, cmp_wakeup_tick, NULL);
+		thread_block();
+	}
+	intr_set_level(old_level);
+}
+
+void
+thread_awake(int64_t current_tick){
+	struct list_elem *e = list_begin(&sleep_list);
+
+	while (e != list_end(&sleep_list))
+	{
+		struct thread *t = list_entry(e, struct thread, elem);
+		if(t->wakeup_tick <= current_tick){
+			e = list_remove(e);
+			thread_unblock(t);
+		} else {
+			break; //정렬되어 있으니깐 안꺠워도됨
+		}
+	}
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
@@ -463,7 +510,7 @@ do_iret (struct intr_frame *tf) {
    complete.  In practice that means that printf()s should be
    added at the end of the function. */
 static void
-thread_launch (struct thread *th) {
+thread_launch (struct thread *th) { //context switch가 일어나는 방식
 	uint64_t tf_cur = (uint64_t) &running_thread ()->tf;
 	uint64_t tf = (uint64_t) &th->tf;
 	ASSERT (intr_get_level () == INTR_OFF);

@@ -1,0 +1,8 @@
+FAIL
+Kernel panic in run: PANIC at ../../threads/synch.c:223 in lock_release(): assertion `lock_held_by_current_thread (lock)' failed.
+Call stack: 0x8004213357 0x8004209ebc 0x800421839c 0x8004207308
+Translation of call stack:
+0x0000008004213357: debug_panic (lib/kernel/debug.c:32)
+0x0000008004209ebc: lock_release (threads/synch.c:225)
+0x000000800421839c: medium_thread_func (tests/threads/priority-donate-nest.c:79)
+0x0000008004207308: kernel_thread (threads/thread.c:440)

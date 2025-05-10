@@ -92,9 +92,13 @@ void
 timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
 
-	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	ASSERT (intr_get_level () == INTR_ON); // 인터럽트 켜진 상태에서만 호출 가능
+	// while (timer_elapsed (start) < ticks) //busy-wating 방식 제거
+	// 	thread_yield ();
+	if(timer_elapsed(start) < ticks){ // 현재 시간부터의 경과 시간이 ticks 보다 작으면 (깨울 때가 아니다)
+		thread_sleep(start + ticks); // 스레드를 sleep(BLOCKED)시킨다
+		// 스레드가 꺠어날 시간 (start + ticks)
+	}
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -126,6 +130,8 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+	// 꺠워야 할 스레드 처리
+	thread_awake(ticks);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
