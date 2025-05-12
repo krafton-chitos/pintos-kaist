@@ -95,7 +95,8 @@ timer_sleep (int64_t ticks) {
 	ASSERT (intr_get_level () == INTR_ON); // 인터럽트 켜진 상태에서만 호출 가능
 	// while (timer_elapsed (start) < ticks) //busy-wating 방식 제거
 	// 	thread_yield ();
-	if(timer_elapsed(start) < ticks){ // 현재 시간부터의 경과 시간이 ticks 보다 작으면 (깨울 때가 아니다)
+	if(timer_elapsed(start) < ticks){ // 현재 시간부터의 경과 시간이 목표 대기 시간(ticks)보다 작으면 (즉, 아직 더 자야 하면)
+		// 스레드를 재운다. 깨어날 시간은 (잠들기 시작한 시간 + 대기할 틱 수)
 		thread_sleep(start + ticks); // 스레드를 sleep(BLOCKED)시킨다
 		// 스레드가 꺠어날 시간 (start + ticks)
 	}
@@ -128,10 +129,11 @@ timer_print_stats (void) {
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
-	ticks++;
-	thread_tick ();
+	ticks++; // 전역 틱 카운터 증가
+	thread_tick (); // 스레드 시스템의 틱 처리 함수 호출(선점,통계,업데이트)
 	// 꺠워야 할 스레드 처리
 	thread_awake(ticks);
+	// 현재 틱 값을 인자로 전달하여 sleep_list에 있는 스레드 중 깨울 스레드를 깨움
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
