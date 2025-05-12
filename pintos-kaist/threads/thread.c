@@ -24,6 +24,8 @@
    Do not modify this value. */
 #define THREAD_BASIC 0xd42df210
 
+static int64_t global_tick = INT64_MAX; /* Global tick for all threads. */
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -331,12 +333,18 @@ thread_sleep(int64_t ticks){
 	enum intr_level old_level = intr_disable();
 	struct thread *cur = thread_current();
 
+	ASSERT (!intr_context ());
+
 	if(cur != idle_thread){
 		cur -> wakeup_tick = ticks;
 		list_insert_ordered(&sleep_list, &cur->elem, cmp_wakeup_tick, NULL);
 		thread_block();
 	}
 	intr_set_level(old_level);
+}
+
+bool need_for_thread_awake(int64_t current_tick) {
+	return current_tick > global_tick;
 }
 
 void
@@ -346,12 +354,17 @@ thread_awake(int64_t current_tick){
 	while (e != list_end(&sleep_list))
 	{
 		struct thread *t = list_entry(e, struct thread, elem);
+		struct list_elem *next = list_next(e);
+
 		if(t->wakeup_tick <= current_tick){
-			e = list_remove(e);
-			thread_unblock(t);
+			list_remove(e);
+            t->status = THREAD_READY;
+            list_push_back(&ready_list, &t->elem);
 		} else {
-			break; //정렬되어 있으니깐 안꺠워도됨
+			global_tick = t->wakeup_tick;
+			break;
 		}
+		e = next;
 	}
 }
 

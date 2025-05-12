@@ -131,7 +131,8 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
 	// 꺠워야 할 스레드 처리
-	thread_awake(ticks);
+	if (need_for_thread_awake(ticks))
+		thread_awake(ticks);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
