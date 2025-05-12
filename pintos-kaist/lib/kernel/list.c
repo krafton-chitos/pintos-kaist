@@ -35,25 +35,28 @@ static bool is_sorted (struct list_elem *a, struct list_elem *b,
 		list_less_func *less, void *aux) UNUSED;
 
 /* Returns true if ELEM is a head, false otherwise. */
+/*해당 요소가 "head"인지 여부를 반환합니다. 아니라면 false입니다.*/
 static inline bool
 is_head (struct list_elem *elem) {
 	return elem != NULL && elem->prev == NULL && elem->next != NULL;
 }
 
-/* Returns true if ELEM is an interior element,
-   false otherwise. */
+/* Returns true if ELEM is an interior element, false otherwise. */
+/*해당 요소가 내부 요소(즉, head도 tail도 아닌 중간 노드)면 true를 반환합니다.*/
 static inline bool
 is_interior (struct list_elem *elem) {
 	return elem != NULL && elem->prev != NULL && elem->next != NULL;
 }
 
 /* Returns true if ELEM is a tail, false otherwise. */
+/*해당 요소가 "tail"인지 여부를 반환합니다.*/
 static inline bool
 is_tail (struct list_elem *elem) {
 	return elem != NULL && elem->prev != NULL && elem->next == NULL;
 }
 
 /* Initializes LIST as an empty list. */
+/*LIST를 빈 리스트로 초기화합니다. (head/tail 포인터 세팅)*/
 void
 list_init (struct list *list) {
 	ASSERT (list != NULL);
@@ -64,6 +67,7 @@ list_init (struct list *list) {
 }
 
 /* Returns the beginning of LIST.  */
+/*리스트의 처음 요소(head 다음 요소)를 반환합니다.*/
 struct list_elem *
 list_begin (struct list *list) {
 	ASSERT (list != NULL);
@@ -73,6 +77,8 @@ list_begin (struct list *list) {
 /* Returns the element after ELEM in its list.  If ELEM is the
    last element in its list, returns the list tail.  Results are
    undefined if ELEM is itself a list tail. */
+/*ELEM 다음 요소를 반환합니다. 마지막 요소일 경우 tail을 반환합니다.
+단, ELEM이 tail이면 결과는 정의되지 않습니다.*/
 struct list_elem *
 list_next (struct list_elem *elem) {
 	ASSERT (is_head (elem) || is_interior (elem));
@@ -84,6 +90,8 @@ list_next (struct list_elem *elem) {
    list_end() is often used in iterating through a list from
    front to back.  See the big comment at the top of list.h for
    an example. */
+/*LIST의 tail 포인터를 반환합니다.
+list_end()는 보통 리스트를 앞에서 뒤로 순회할 때 사용합니다.*/
 struct list_elem *
 list_end (struct list *list) {
 	ASSERT (list != NULL);
@@ -92,6 +100,7 @@ list_end (struct list *list) {
 
 /* Returns the LIST's reverse beginning, for iterating through
    LIST in reverse order, from back to front. */
+/*LIST를 역순으로 순회할 때, 시작 지점을 반환합니다 (tail의 이전 요소).*/
 struct list_elem *
 list_rbegin (struct list *list) {
 	ASSERT (list != NULL);
@@ -101,6 +110,8 @@ list_rbegin (struct list *list) {
 /* Returns the element before ELEM in its list.  If ELEM is the
    first element in its list, returns the list head.  Results are
    undefined if ELEM is itself a list head. */
+/*ELEM 바로 앞 요소를 반환합니다. 첫 요소일 경우 head를 반환합니다.
+단, ELEM이 head이면 결과는 정의되지 않습니다.*/
 struct list_elem *
 list_prev (struct list_elem *elem) {
 	ASSERT (is_interior (elem) || is_tail (elem));
@@ -120,6 +131,7 @@ list_prev (struct list_elem *elem) {
    ...do something with f...
    }
    */
+
 struct list_elem *
 list_rend (struct list *list) {
 	ASSERT (list != NULL);
@@ -281,6 +293,8 @@ list_back (struct list *list) {
 
 /* Returns the number of elements in LIST.
    Runs in O(n) in the number of elements. */
+/*LIST에 들어 있는 요소 개수를 반환합니다.
+시간 복잡도는 요소 수(n)에 비례하는 **O(n)**입니다.*/
 size_t
 list_size (struct list *list) {
 	struct list_elem *e;
@@ -292,12 +306,15 @@ list_size (struct list *list) {
 }
 
 /* Returns true if LIST is empty, false otherwise. */
+/*LIST가 비어 있으면 true, 그렇지 않으면 false를 반환합니다.*/
 bool
 list_empty (struct list *list) {
 	return list_begin (list) == list_end (list);
 }
 
 /* Swaps the `struct list_elem *'s that A and B point to. */
+/*A와 B가 가리키는 list_elem * 값을 서로 교환합니다.
+즉, 포인터 변수 값 자체를 바꾸는 함수입니다.*/
 static void
 swap (struct list_elem **a, struct list_elem **b) {
 	struct list_elem *t = *a;

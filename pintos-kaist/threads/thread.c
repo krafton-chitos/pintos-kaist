@@ -18,17 +18,24 @@
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
+// 스택의 오버 플로우를 방지하는 MAGIC 인자
 #define THREAD_MAGIC 0xcd6abf4b
 
 /* Random value for basic thread
    Do not modify this value. */
+// 테스트 스레드의 고유 id 식별용
 #define THREAD_BASIC 0xd42df210
+
+/* 전체 시간을 알기위한 ticks*/
+static int64_t next_tick_to_awake = INT64_MAX;
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
-
+static struct list sleep_list;
+static struct list wait_list;
 /* Idle thread. */
+// cpu가 대기 상태임을 
 static struct thread *idle_thread;
 
 /* Initial thread, the thread running init.c:main(). */
@@ -55,13 +62,16 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 bool thread_mlfqs;
 
 static void kernel_thread (thread_func *, void *aux);
-
+static bool cmp_wakeup_tick (const struct list_elem *, const struct list_elem *, void *);
+static bool cmp_priority(const struct list_elem *, const struct list_elem *, void *);
 static void idle (void *aux UNUSED);
 static struct thread *next_thread_to_run (void);
 static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+static void update_next_tick_to_awake();
+static void thread_ready_check (struct thread *);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -99,16 +109,18 @@ thread_init (void) {
 	/* Reload the temporal gdt for the kernel
 	 * This gdt does not include the user context.
 	 * The kernel will rebuild the gdt with user context, in gdt_init (). */
-	struct desc_ptr gdt_ds = {
+	struct desc_ptr gdt_ds = { // x86 에서 세그먼트 테이블 정의
 		.size = sizeof (gdt) - 1,
 		.address = (uint64_t) gdt
 	};
 	lgdt (&gdt_ds);
 
 	/* Init the globla thread context */
-	lock_init (&tid_lock);
-	list_init (&ready_list);
-	list_init (&destruction_req);
+	lock_init (&tid_lock); // 쓰레드 tid 할당 락 (세마포어로 되어있음)
+	list_init (&ready_list); // 쓰레드 ready 리스트
+	list_init (&sleep_list); // 쓰레드 sleep 리스트
+	list_init (&wait_list); // 쓰레드 wait 리스트
+	list_init (&destruction_req); //삭제 예약된 스레드들의 리스트
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -206,8 +218,14 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
-
+	thread_ready_check(t);
 	return tid;
+}
+
+static void
+thread_ready_check (struct thread *t){
+	if (thread_current ()->priority < t->priority)
+		thread_yield();
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
@@ -240,7 +258,7 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	list_insert_ordered (&ready_list, &t->elem, cmp_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -303,15 +321,86 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered (&ready_list, &curr->elem, cmp_priority, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
+}
+
+static bool // 추가 함수 : 깨어날 순으로 오름차순 정렬 함수
+cmp_wakeup_tick(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED){ 
+	struct thread *a = list_entry(a_, struct thread, elem);
+	struct thread *b = list_entry(b_, struct thread, elem);
+
+	return a->wakeup_tick < b->wakeup_tick;
+}
+
+static void update_next_tick_to_awake() { // 추가 함수 : global_ticks 작은 값으로 초기화
+	if (!list_empty(&sleep_list)){
+	struct thread *a = list_entry(list_front(&sleep_list), struct thread, elem);
+	next_tick_to_awake = a->wakeup_tick;
+	}
+
+	else{
+		next_tick_to_awake = INT64_MAX;
+	}
+}
+
+void
+thread_sleep(int64_t ticks){
+	if (thread_current() != idle_thread){
+		enum intr_level old_level = intr_disable();
+		struct thread *cur = thread_current();
+		cur->wakeup_tick = ticks;
+
+		// 정렬 삽입
+		list_insert_ordered(&sleep_list, &cur->elem, cmp_wakeup_tick, NULL);
+
+		// global tick 갱신
+		update_next_tick_to_awake();
+
+
+		thread_block(); // block 상태로 변경
+		intr_set_level(old_level); // 인터럽트 disable 해제
+	}
+}
+
+void 
+wakeup_thread (int64_t target_ticks){
+	while (!list_empty(&sleep_list)) {
+		struct list_elem *target_ele = list_front(&sleep_list);
+		struct thread *target = list_entry(target_ele, struct thread, elem);
+
+		if (target->wakeup_tick <= target_ticks) {
+			list_remove(target_ele);
+			thread_unblock(target);
+		} else {
+			break;
+		}
+	}
+	//갱신
+	update_next_tick_to_awake(); 
+}
+
+bool
+check_global_tick(int64_t ticks){
+	return ticks >= next_tick_to_awake;
+}
+
+static bool // 추가 함수 : 우선순위 순 정렬
+cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED){ 
+	struct thread *a = list_entry(a_, struct thread, elem);
+	struct thread *b = list_entry(b_, struct thread, elem);
+
+	return a->priority > b->priority;
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	// list_sort(&ready_list, cmp_priority, NULL);
+	if (!list_empty(&ready_list))
+		thread_ready_check(list_entry(list_front(&ready_list), struct thread, elem));
 }
 
 /* Returns the current thread's priority. */
