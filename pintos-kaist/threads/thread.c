@@ -71,7 +71,7 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 static void update_global_tick();
-static void thread_ready_check (struct thread *);
+void thread_ready_check (struct thread *);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -222,7 +222,7 @@ thread_create (const char *name, int priority,
 	return tid;
 }
 
-static void
+void
 thread_ready_check (struct thread *t){
 	if (thread_current ()->priority < t->priority)
 		thread_yield();
