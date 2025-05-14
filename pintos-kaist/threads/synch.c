@@ -200,7 +200,7 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 	// 일단 후원을 하고, 풀리는 지 확인해봄. (락을 풀어 주기를 유도한다고 했으니까...)
-	// 후원하고  유감. 이런느낌 ? -> 일단 시도. 
+	// 후원하고 안풀리면 유감. 이런느낌 ? -> 일단 시도. 
 	// 여기서 일단 lock held를 가지고 있는 애 보다 우선 순위가 커야함
 	struct thread *curr = thread_current();
 
@@ -220,19 +220,17 @@ static void
 donate_priority (struct thread *donator) {
 	struct lock *target_lock = donator->wait_on_lock;
 
+   if (donator->priority > target_lock->holder->priority) {
+      list_push_back(&target_lock->holder->donations, &donator->d_elem);
+   }
+
 	while (target_lock != NULL) {
 		struct thread *target_holder = target_lock->holder;
-		if (target_holder == NULL) break;
 
 		if (donator->priority > target_holder->priority) {
 			target_holder->priority = donator->priority;
-
-		//donator의 앞뒤를 확인해서 중복인지 아닌지 확인함. (중복이라면 둘중 한 값이 null이 아님)
-			if (donator->d_elem.prev == NULL && donator->d_elem.next == NULL) 
-				list_push_back(&target_holder->donations, &donator->d_elem);
-
-		}
-
+      }
+      
 		target_lock = target_holder->wait_on_lock;
 	}
 }
@@ -284,6 +282,10 @@ lock_release(struct lock *lock) {
     ASSERT(lock != NULL);
     ASSERT(lock_held_by_current_thread(lock));
 
+   //현재 락이 도네이터들의 락과 똑같다면 (곧 락을 풀꺼니까)
+   //후원자 리스트에서 삭제한다.
+   // 만약 후원 대상이 남았다면, 그 중에서 가장 큰 사람을 골라서
+   // 나의 우선순위로 바꾸고, 없다면 원래의 우선순위로 돌아간다 !
   
     remove_donations_for_lock(lock); 
     reset_priority();                 
