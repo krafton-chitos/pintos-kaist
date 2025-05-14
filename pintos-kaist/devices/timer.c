@@ -134,6 +134,10 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 	// 꺠워야 할 스레드 처리
 	thread_awake(ticks);
 	// 현재 틱 값을 인자로 전달하여 sleep_list에 있는 스레드 중 깨울 스레드를 깨움
+
+	if(ticks >= global_ticks){
+		thread_awake(ticks);
+	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
