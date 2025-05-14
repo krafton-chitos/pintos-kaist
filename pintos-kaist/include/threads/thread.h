@@ -95,6 +95,10 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	int original_priority;				/*original priori*/
+	struct lock *wait_on_lock;			/*wating lock */
+	struct list donations;				/*donation list*/
+	struct list_elem d_elem;     		/*donation elem*/
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -140,6 +144,9 @@ void thread_yield (void);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+void thread_re_sort (void);
+bool cmp_priority(const struct list_elem *, const struct list_elem *, void *);
+
 
 int thread_get_nice (void);
 void thread_set_nice (int);

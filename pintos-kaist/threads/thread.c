@@ -63,7 +63,7 @@ bool thread_mlfqs;
 
 static void kernel_thread (thread_func *, void *aux);
 static bool cmp_wakeup_tick (const struct list_elem *, const struct list_elem *, void *);
-static bool cmp_priority(const struct list_elem *, const struct list_elem *, void *);
+
 static void idle (void *aux UNUSED);
 static struct thread *next_thread_to_run (void);
 static void init_thread (struct thread *, const char *name, int priority);
@@ -119,7 +119,6 @@ thread_init (void) {
 	lock_init (&tid_lock); // 쓰레드 tid 할당 락 (세마포어로 되어있음)
 	list_init (&ready_list); // 쓰레드 ready 리스트
 	list_init (&sleep_list); // 쓰레드 sleep 리스트
-	list_init (&wait_list); // 쓰레드 wait 리스트
 	list_init (&destruction_req); //삭제 예약된 스레드들의 리스트
 
 	/* Set up a thread structure for the running thread. */
@@ -260,6 +259,7 @@ thread_unblock (struct thread *t) {
 	ASSERT (t->status == THREAD_BLOCKED);
 	list_insert_ordered (&ready_list, &t->elem, cmp_priority, NULL);
 	t->status = THREAD_READY;
+		
 	intr_set_level (old_level);
 }
 
@@ -386,7 +386,7 @@ check_global_tick(int64_t ticks){
 	return ticks >= next_tick_to_awake;
 }
 
-static bool // 추가 함수 : 우선순위 순 정렬
+bool // 추가 함수 : 우선순위 순 정렬
 cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED){ 
 	struct thread *a = list_entry(a_, struct thread, elem);
 	struct thread *b = list_entry(b_, struct thread, elem);
@@ -397,10 +397,19 @@ cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux U
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
-	// list_sort(&ready_list, cmp_priority, NULL);
-	if (!list_empty(&ready_list))
-		thread_ready_check(list_entry(list_front(&ready_list), struct thread, elem));
+	struct thread *curr = thread_current();
+	curr->original_priority = new_priority;
+	reset_priority();  
+	thread_re_sort();  
+}
+
+
+void thread_re_sort (){
+	if (!list_empty(&ready_list)){
+		list_sort(&ready_list, cmp_priority, NULL);
+		if (thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)
+			thread_yield();
+	}
 }
 
 /* Returns the current thread's priority. */
@@ -496,8 +505,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
-	t->priority = priority;
-	t->magic = THREAD_MAGIC;
+	t->priority = priority;   
+	t->original_priority = priority; // 기존 우선순위
+	t->magic = THREAD_MAGIC; // 
+	list_init(&t->donations); // donations 리스트 초기화
+	t->wait_on_lock = NULL;   
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

@@ -27,6 +27,7 @@ void lock_acquire (struct lock *);
 bool lock_try_acquire (struct lock *);
 void lock_release (struct lock *);
 bool lock_held_by_current_thread (const struct lock *);
+void reset_priority(void);
 
 /* Condition variable. */
 struct condition {
@@ -37,6 +38,10 @@ void cond_init (struct condition *);
 void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
 void cond_broadcast (struct condition *, struct lock *);
+
+
+bool
+cmp_sema_priority(const struct list_elem *, const struct list_elem *, void *);
 
 /* Optimization barrier.
  *

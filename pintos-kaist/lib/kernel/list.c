@@ -217,7 +217,7 @@ list_push_back (struct list *list, struct list_elem *elem) {
 
 /* Removes ELEM from its list and returns the element that
    followed it.  Undefined behavior if ELEM is not in a list.
-
+                
    It's not safe to treat ELEM as an element in a list after
    removing it.  In particular, using list_next() or list_prev()
    on ELEM after removal yields undefined behavior.  This means
@@ -247,7 +247,7 @@ while (!list_empty (&list))
 {
 struct list_elem *e = list_pop_front (&list);
 ...do something with e...
-}
+}                        
 */
 struct list_elem *
 list_remove (struct list_elem *elem) {
