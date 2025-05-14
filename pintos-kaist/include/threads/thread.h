@@ -92,6 +92,11 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int64_t wakeup_tick;				// 꺠울시간
 	int priority;                       /* Priority. */
+	int original_priority;
+	struct list donations;
+	struct list_elem d_elem;
+	struct lock *wait_on_lock;
+
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
