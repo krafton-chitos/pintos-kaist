@@ -91,9 +91,14 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	int64_t wakeup_tick;				/* 스레드를 깨워야하는 시간 */
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	int original_priority;				/* donation을 모두 제거했을 때 priority를 복원할 기준값 */
+	struct lock *wait_on_lock;			/* wating lock*/
+	struct list donation;				/* donation list */
+	struct list_elem d_elem;			/* donation 리스트에 쓰이는 요소 */
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -108,6 +113,13 @@ struct thread {
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
 };
+
+extern int64_t next_tick_to_awake;
+bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
+bool thread_priority_cmp(const struct list_elem *, const struct list_elem *, void *);
+void remove_with_lock(struct lock *lock);
+void refresh_priority(void);
+bool thread_donation_cmp(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
