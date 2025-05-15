@@ -32,9 +32,13 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+void update_priority(struct thread *thread);
+void nested_donation (struct lock *lock);
+void mult_donation(struct lock *lock);
+int Max(int a, int b, int c);
 static bool cmp_priority(const struct list_elem *, const struct list_elem *, void *);
 static bool cmp_sema_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
-
+static bool cmp_priority_d_elem(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED);
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -115,6 +119,7 @@ sema_up (struct semaphore *sema) {
 	old_level = intr_disable ();
 	if (!list_empty (&sema->waiters))
 	{
+		list_sort(&sema->waiters, cmp_priority, NULL); // **priority 순으로 정렬 추가**
 		struct thread *a = list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem);
 		thread_unblock (a);
@@ -204,16 +209,64 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-	if (!lock->holder == NULL)
+	if (lock->holder != NULL)
 	{
-		thread_current()->wait_on_lock = lock;
-
-		if (lock->holder->priority < thread_current()->priority)
-			lock->holder->priority = thread_current()->priority;
+		mult_donation(lock);
 	}
 
 	sema_down (&lock->semaphore);
 	lock->holder = thread_current ();
+	thread_current()->wait_on_lock = NULL;
+}
+
+void
+mult_donation(struct lock *lock)
+{
+	struct thread *lock_holder = lock->holder;
+	enum intr_level old_level;
+
+	ASSERT (!intr_context ());
+
+	old_level = intr_disable ();
+
+	thread_current()->wait_on_lock = lock;
+	if (list_empty(&lock->semaphore.waiters))
+		list_insert_ordered(&lock_holder->donations, &thread_current()->d_elem, cmp_priority_d_elem, NULL);
+
+	else
+	{
+		struct list_elem *elem = list_begin(&lock->semaphore.waiters);
+		struct thread *thread = list_entry(elem, struct thread, elem);
+		if (thread->priority < thread_current()->priority)
+		{
+			list_remove(&thread->d_elem);
+			list_insert_ordered(&lock_holder->donations, &thread_current()->d_elem, cmp_priority_d_elem, NULL);
+		}
+	}
+
+	if (lock_holder->priority < thread_current()->priority)
+	{
+		lock_holder->priority = thread_current()->priority;
+
+		if (lock_holder->wait_on_lock != NULL)
+			nested_donation(lock_holder->wait_on_lock);
+	}
+	intr_set_level (old_level);
+}
+
+void
+nested_donation (struct lock *lock)
+{
+	if (lock->holder != NULL)
+	{
+		if (lock->holder->priority < thread_current()->priority)
+		{
+			lock->holder->priority = thread_current()->priority;
+
+			if(lock->holder->wait_on_lock != NULL)
+				nested_donation(lock->holder->wait_on_lock);
+		}
+	}
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -245,9 +298,35 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
-
-	if (thread_current()->priority != thread_current()->original_priority)
+	
+	if (list_empty(&lock->holder->donations))
+	{
 		thread_current()->priority = thread_current()->original_priority;
+	}
+
+	else
+	{
+		enum intr_level old_level;
+		ASSERT (!intr_context ());
+
+		old_level = intr_disable ();
+		
+		if (!list_empty(&lock->semaphore.waiters))
+		{
+			struct list_elem *elem = list_begin(&lock->semaphore.waiters);
+			struct thread *thread = list_entry(elem, struct thread, elem);
+			list_remove(&thread->d_elem);
+		}
+		struct list_elem *donation_elem = list_max(&thread_current()->donations, cmp_priority, NULL);
+		int donation_max = list_entry(donation_elem, struct thread, d_elem)->priority;
+
+		if (thread_current()->original_priority > donation_max)
+			thread_current()->priority = thread_current()->original_priority;
+		else
+			thread_current()->priority = donation_max;
+
+		intr_set_level (old_level);
+	}
 
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
@@ -356,6 +435,14 @@ static bool // 추가 함수 : 우선순위 순 정렬
 cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED){ 
 	struct thread *a = list_entry(a_, struct thread, elem);
 	struct thread *b = list_entry(b_, struct thread, elem);
+
+	return a->priority > b->priority;
+}
+
+static bool // 추가 함수 : 우선순위 순 정렬
+cmp_priority_d_elem(const struct list_elem *a_, const struct list_elem *b_, void *aux UNUSED){ 
+	struct thread *a = list_entry(a_, struct thread, d_elem);
+	struct thread *b = list_entry(b_, struct thread, d_elem);
 
 	return a->priority > b->priority;
 }

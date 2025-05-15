@@ -396,9 +396,14 @@ cmp_priority(const struct list_elem *a_, const struct list_elem *b_, void *aux U
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
-thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+thread_set_priority (int new_priority) 
+{
 	thread_current ()->original_priority = new_priority;
+	if (new_priority > thread_current()->priority)
+		thread_current()->priority = new_priority;
+	else if(list_empty(&thread_current()->donations)){
+		thread_current()->priority = new_priority;
+	}
 	// list_sort(&ready_list, cmp_priority, NULL);
 	if (!list_empty(&ready_list))
 		thread_ready_check(list_entry(list_front(&ready_list), struct thread, elem));
