@@ -8,6 +8,11 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 
+// 유저 프로세스가 일부 커널 기능에 접근하려고 할때마다 시스템 콜이 호출된다.
+// 이게 시스템 콜 핸들러의 기본 구조
+// 현재 상태에서는 이때 단지 메세지를 출력하고 유저 프로세스를 종료시키게 되어있다. 
+// 시스템 콜이 필요로 하는 다른 일을 수행하는 코드를 수행
+
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
@@ -41,6 +46,19 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
+	struct thread *t = thread_current();
+	// switch (f->R.rax) 
+	// {
+	// case SYS_HALT:
+	// 	half();
+	// 	break;
+	// case SYS_EXIT:
+	// 	exit(f->R.rax);
+	// 	break;
+	// case SYS_FORK:
+	// 	f->R.rax = fork(f->);
+	// }
+	
 	printf ("system call!\n");
 	thread_exit ();
 }
