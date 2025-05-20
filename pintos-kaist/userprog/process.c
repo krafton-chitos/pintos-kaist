@@ -22,6 +22,8 @@
 #include "vm/vm.h"
 #endif
 
+#define MAX_ARGS 16
+
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
@@ -51,7 +53,7 @@ process_create_initd (const char *file_name) {
 	strlcpy (fn_copy, file_name, PGSIZE);
 
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy); // initd?
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -160,15 +162,58 @@ error:
 
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
+// int
+// process_exec (void *f_name) {
+// 	char *file_name = f_name;
+// 	bool success;
+	
+// 	/* We cannot use the intr_frame in the thread structure.
+// 	 * This is because when current thread rescheduled,
+// 	 * it stores the execution information to the member. */
+// 	struct intr_frame _if;
+
+// 	_if.ds = _if.es = _if.ss = SEL_UDSEG;
+// 	_if.cs = SEL_UCSEG;
+// 	_if.eflags = FLAG_IF | FLAG_MBS;
+
+// 	/* We first kill the current context */
+// 	process_cleanup ();
+
+// 	/* And then load the binary */
+// 	success = load (file_name, &_if);
+
+// 	/* If load failed, quit. */
+// 	palloc_free_page (file_name);
+// 	if (!success)
+// 		return -1;
+
+// 	/* Start switched process. */
+// 	do_iret (&_if);
+// 	NOT_REACHED ();
+// }
+
 int
 process_exec (void *f_name) {
-	char *file_name = f_name;
+	char *str = f_name;
+	char *save_ptr, *token;
+	char *argv[MAX_ARGS];
+	int argc = 0;
 	bool success;
 
+	token = strtok_r(str, " ", &save_ptr);
+	while (token != NULL && argc < MAX_ARGS)
+	{
+		argv[argc++] = token;
+		token = strtok_r(NULL, " ", &save_ptr);
+	}
+
+	char *file_name = argv[0];
+	
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
 	struct intr_frame _if;
+
 	_if.ds = _if.es = _if.ss = SEL_UDSEG;
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
@@ -179,6 +224,47 @@ process_exec (void *f_name) {
 	/* And then load the binary */
 	success = load (file_name, &_if);
 
+	// 여기서부터 내가
+
+	if (success)
+	{
+		_if.R.rdi = argc;
+		void *arg_addr[MAX_ARGS];
+		void *start = _if.rsp;
+
+		for(int i = argc - 1; i >=0 + 1; i--)
+		{
+			size_t arg_size = strlen(argv[i]) + 1;
+			start -= arg_size;
+			memcpy (start, argv[i], arg_size);
+			arg_addr[i] = start;
+		}
+
+		uintptr_t align = (uintptr_t)start % 16;
+		if (align !=0)
+			start -= align;
+
+		start -= sizeof(char *);
+		*(char **)start = NULL;
+
+		for (int i = argc -1; i >= 0; i--)
+		{
+			start -= sizeof(char *);
+			*(char **)start = arg_addr[i];
+		}
+
+		_if.R.rsi  = start;
+
+		start -= sizeof(void *);
+		*(void **)start = NULL;
+
+		_if.rsp = start;
+	}
+
+	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+
+	// 여기까지 내가
+
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
@@ -188,7 +274,6 @@ process_exec (void *f_name) {
 	do_iret (&_if);
 	NOT_REACHED ();
 }
-
 
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
@@ -204,6 +289,8 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	while(1){
+	}
 	return -1;
 }
 
@@ -535,6 +622,22 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 }
 
 /* Create a minimal stack by mapping a zeroed page at the USER_STACK */
+// static bool
+// setup_stack (struct intr_frame *if_) {
+// 	uint8_t *kpage;
+// 	bool success = false;
+
+// 	kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+// 	if (kpage != NULL) {
+// 		success = install_page (((uint8_t *) USER_STACK) - PGSIZE, kpage, true);
+// 		if (success)
+// 			if_->rsp = USER_STACK;
+// 		else
+// 			palloc_free_page (kpage);
+// 	}
+// 	return success;
+// }
+
 static bool
 setup_stack (struct intr_frame *if_) {
 	uint8_t *kpage;

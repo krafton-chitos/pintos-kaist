@@ -194,6 +194,10 @@ thread_create (const char *name, int priority,
 	struct thread *t;
 	tid_t tid;
 
+	// 새로운 스레드를 생성할 때 커널 스택 할당
+	// 실행할 함수로 start_process를 등록
+	// 이 스레드를 ready_list에 추가함
+
 	ASSERT (function != NULL);
 
 	/* Allocate thread. */
@@ -224,7 +228,7 @@ thread_create (const char *name, int priority,
 
 void
 thread_ready_check (struct thread *t){
-	if (thread_current ()->priority < t->priority)
+	if ((thread_current() != idle_thread) && thread_current ()->priority < t->priority)
 		thread_yield();
 }
 
