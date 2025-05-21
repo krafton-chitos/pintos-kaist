@@ -7,9 +7,25 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "lib/user/syscall.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+
+void sys_halt(void);
+void sys_exit(int status);
+pid_t sys_fork (const char *thread_name);
+int sys_exec (const char *file);
+int sys_wait (pid_t pid);
+bool sys_create (const char *file, unsigned initial_size);
+bool sys_remove (const char *file);
+int sys_open (const char *file);
+int sys_filesize (int fd);
+int sys_read (int fd, void *buffer, unsigned size);
+int sys_write (int fd, const void *buffer, unsigned size);
+void sys_seek (int fd, unsigned position);
+unsigned sys_tell (int fd);
+void sys_close (int fd);
 
 /* System call.
  *
@@ -41,93 +57,93 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+	// printf ("system call!\n");
+	// thread_exit ();
 
 	uint64_t syscall_n = f->R.rax;
 
 	
 	switch(syscall_n)
 	{
-		case 0:
+		case SYS_HALT:
 		{
 			sys_halt();
 			break;
 		}
 
-		case 1:
+		case SYS_EXIT:
 		{
 			sys_exit(f->R.rdi);
 			break;
 		}
 
-		case 2:
+		case SYS_FORK:
 		{
 			f->R.rax = sys_fork(f->R.rdi);
 			break;
 		}
 
-		case 3:
+		case SYS_EXEC:
 		{
 			f->R.rax = sys_exec(f->R.rdi);
 			break;
 		}
 
-		case 4:
+		case SYS_WAIT:
 		{
 			f->R.rax = sys_wait(f->R.rdi);
 			break;
 		}
 
-		case 5:
+		case SYS_CREATE:
 		{
 			f->R.rax = sys_create(f->R.rdi, f->R.rsi);
 			break;
 		}
 
-		case 6:
+		case SYS_REMOVE:
 		{
 			f->R.rax = sys_remove(f->R.rdi);
 			break;
 		}
 
-		case 7:
+		case SYS_OPEN:
 		{
 			f->R.rax = sys_open(f->R.rdi);
 			break;
 		}
 
-		case 8:
+		case SYS_FILESIZE:
 		{
 			f->R.rax = sys_filesize(f->R.rdi);
 			break;
 		}
 
-		case  9:
+		case  SYS_READ:
 		{
 			f->R.rax = sys_read(f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		}
 
-		case 10:
+		case SYS_WRITE:
 		{
 			f->R.rax = sys_write(f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		}
 
-		case 11:
+		case SYS_SEEK:
 		{
 			sys_seek(f->R.rdi, f->R.rsi);
 			break;
 		}
 
-		case 12:
+		case SYS_TELL:
 		{
 			f->R.rax = sys_tell(f->R.rdi);
 			break;
 		}
 
-		case 13:
+		case SYS_CLOSE:
 		{
 			sys_close(f->R.rdi);
 			break;
@@ -149,66 +165,76 @@ sys_halt(void) {
 
 void
 sys_exit(int status) {
+	struct thread *cur = thread_current();
+	printf("%s: exit(%d)\n", cur->name, status);
 	thread_exit();
 	NOT_REACHED ();
 }
 
 pid_t
 sys_fork (const char *thread_name){
-	return load()
+	return;
 }
 
 int
 sys_exec (const char *file) {
-	return (pid_t) syscall1 (SYS_EXEC, file);
+	return;
 }
 
 int
 sys_wait (pid_t pid) {
-	return syscall1 (SYS_WAIT, pid);
+	return;
 }
 
 bool
 sys_create (const char *file, unsigned initial_size) {
-	return syscall2 (SYS_CREATE, file, initial_size);
+	return;
 }
 
 bool
 sys_remove (const char *file) {
-	return syscall1 (SYS_REMOVE, file);
+	return;
 }
 
 int
 sys_open (const char *file) {
-	return syscall1 (SYS_OPEN, file);
+	return;
 }
 
 int
 sys_filesize (int fd) {
-	return syscall1 (SYS_FILESIZE, fd);
+	return;
 }
 
 int
 sys_read (int fd, void *buffer, unsigned size) {
-	return syscall3 (SYS_READ, fd, buffer, size);
+	return;
 }
 
 int
 sys_write (int fd, const void *buffer, unsigned size) {
-	return syscall3 (SYS_WRITE, fd, buffer, size);
+
+
+	if(fd == 1)
+	{
+		putbuf(buffer, size);
+		return size;
+	}
+
+	return -1;
 }
 
 void
 sys_seek (int fd, unsigned position) {
-	syscall2 (SYS_SEEK, fd, position);
+	return;
 }
 
 unsigned
 sys_tell (int fd) {
-	return syscall1 (SYS_TELL, fd);
+	return;
 }
 
 void
 sys_close (int fd) {
-	syscall1 (SYS_CLOSE, fd);
+	return;
 }

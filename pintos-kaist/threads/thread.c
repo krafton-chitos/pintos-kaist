@@ -504,7 +504,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 
 	memset (t, 0, sizeof *t);
 	t->status = THREAD_BLOCKED;
-	strlcpy (t->name, name, sizeof t->name);
+	size_t thread_name_length = strcspn(name, " ");
+	strlcpy (t->name, name, thread_name_length + 1);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;

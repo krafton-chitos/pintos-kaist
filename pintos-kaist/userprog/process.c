@@ -22,7 +22,7 @@
 #include "vm/vm.h"
 #endif
 
-#define MAX_ARGS 16
+#define MAX_ARGS 128
 
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
@@ -232,7 +232,7 @@ process_exec (void *f_name) {
 		void *arg_addr[MAX_ARGS];
 		void *start = _if.rsp;
 
-		for(int i = argc - 1; i >=0 + 1; i--)
+		for(int i = argc - 1; i >= 0; i--)
 		{
 			size_t arg_size = strlen(argv[i]) + 1;
 			start -= arg_size;
@@ -261,7 +261,7 @@ process_exec (void *f_name) {
 		_if.rsp = start;
 	}
 
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
 	// 여기까지 내가
 
@@ -289,8 +289,8 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	while(1){
-	}
+	for(long long i = 0; i < 400000000; i++)
+	{}
 	return -1;
 }
 
