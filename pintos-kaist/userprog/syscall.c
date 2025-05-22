@@ -99,11 +99,11 @@ syscall_handler (struct intr_frame *f UNUSED) {
 }
 
 
-// 유저 주소 체크 함수
+// 유저 주소 체크 함수 입니다.
 void 
 check_user(const void *uaddr){
 	if (uaddr == NULL || !is_user_vaddr(uaddr) ||
-		 pml4_get_page(thread_current()->pml4, uaddr) == NULL){
+		pml4_get_page(thread_current()->pml4, uaddr) == NULL){
 		sys_exit(-1);
 	}
 }
