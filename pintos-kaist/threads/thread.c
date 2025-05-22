@@ -315,15 +315,18 @@ thread_exit (void) {
 void
 thread_yield (void) {
 	struct thread *curr = thread_current ();
-	enum intr_level old_level;
 
-	ASSERT (!intr_context ());
+	if (curr != idle_thread){	
+		enum intr_level old_level;
 
-	old_level = intr_disable ();
-	if (curr != idle_thread)
-		list_insert_ordered (&ready_list, &curr->elem, cmp_priority, NULL);
-	do_schedule (THREAD_READY);
-	intr_set_level (old_level);
+		ASSERT (!intr_context ());
+
+		old_level = intr_disable ();
+		if (curr != idle_thread)
+			list_insert_ordered (&ready_list, &curr->elem, cmp_priority, NULL);
+		do_schedule (THREAD_READY);
+		intr_set_level (old_level);
+	}
 }
 
 static bool // 추가 함수 : 깨어날 순으로 오름차순 정렬 함수
@@ -501,6 +504,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
 	ASSERT (name != NULL);
 
+// * project 1
+///////////////////////////////////////////////////////////////////////////////////////////
 	memset (t, 0, sizeof *t);
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
@@ -509,7 +514,15 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->original_priority = priority; // 기존 우선순위
 	t->magic = THREAD_MAGIC; // 
 	list_init(&t->donations); // donations 리스트 초기화
-	t->wait_on_lock = NULL;   
+	t->wait_on_lock = NULL;
+/////////////////////////////////////////////////////////////////////////////////////////////
+
+// * project 2
+/////////////////////////////////////////////////////////////////////////////////////////////
+	list_init(&t->child_list); // child list 초기화
+	t->parent = NULL; 		   // 부모 쓰레드 초기값 null
+	memset(t->fd_table, 0, sizeof t->fd_table);
+/////////////////////////////////////////////////////////////////////////////////////////////
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

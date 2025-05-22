@@ -28,6 +28,9 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+#define FD_START 2						/*파일 디스크럽터 시작*/
+#define FD_MAX 128						/*파일 디스크럽터 끝 주소*/
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -99,6 +102,11 @@ struct thread {
 	struct lock *wait_on_lock;			/*wating lock */
 	struct list donations;				/*donation list*/
 	struct list_elem d_elem;     		/*donation elem*/
+
+	struct thread *parent;				/*부모 쓰레드*/
+	struct list child_list;				/*자식 리스트*/
+	struct list_elem child_elem;		/*자식 리스트 elem*/
+	struct file *fd_table[FD_MAX];         /*fd table*/
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
