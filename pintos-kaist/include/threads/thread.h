@@ -28,6 +28,9 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+#define FD_START 2						/*파일 디스크럽터 시작*/
+#define FD_MAX 128						/*파일 디스크럽터 끝 주소*/
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -90,15 +93,21 @@ struct thread {
 	tid_t tid;                          /* Thread identifier. */
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
+	int64_t wakeup_tick;				// 꺠울시간
 	int priority;                       /* Priority. */
 	int64_t wakeup_tick;				/* 스레드를 깨워야하는 시간 */
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
-	int original_priority;				/* donation을 모두 제거했을 때 priority를 복원할 기준값 */
-	struct lock *wait_on_lock;			/* wating lock*/
-	struct list donation;				/* donation list */
-	struct list_elem d_elem;			/* donation 리스트에 쓰이는 요소 */
+	int original_priority;				/*original priori*/
+	struct lock *wait_on_lock;			/*wating lock */
+	struct list donations;				/*donation list*/
+	struct list_elem d_elem;     		/*donation elem*/
+
+	struct thread *parent;				/*부모 쓰레드*/
+	struct list child_list;				/*자식 리스트*/
+	struct list_elem child_elem;		/*자식 리스트 elem*/
+	struct file *fd_table[FD_MAX];         /*fd table*/
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -138,6 +147,10 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 void thread_block (void);
 void thread_unblock (struct thread *);
 
+bool check_global_tick(int64_t);
+
+void wakeup_thread (int64_t);
+
 struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
@@ -147,6 +160,9 @@ void thread_yield (void);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+void thread_re_sort (void);
+bool cmp_priority(const struct list_elem *, const struct list_elem *, void *);
+
 
 int thread_get_nice (void);
 void thread_set_nice (int);
