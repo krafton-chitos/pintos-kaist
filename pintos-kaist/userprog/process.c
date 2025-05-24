@@ -188,14 +188,15 @@ __do_fork (void *aux) {
 
 	current->parent = parent;
 	list_push_front(&(parent->child_list), &(current->child_elem));
+	if_.R.rax = 0;
 
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if = &(if_); 
+	// struct intr_frame *parent_if = &if_;
 
 	bool succ = true;
 
 	/* 1. Read the cpu context to local stack. */
-	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+	// memcpy (&if_, parent_if, sizeof (struct intr_frame));
 
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
@@ -217,7 +218,13 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
-
+	for(int i = FD_START; i < FD_MAX; i++){
+		if (parent->fd_table[i] != NULL){
+			current->fd_table[i] = 
+			file_duplicate(parent->fd_table[i]);
+		}
+	}
+	
 	process_init ();
 
 	/* Finally, switch to the newly created process. */
@@ -315,10 +322,6 @@ push_by_stack(struct intr_frame *if_, char *argv[], int argc){
     // fake return address
     if_->rsp -= 8;
     memset((void *)if_->rsp, 0, 8);
-
-	if (if_->rsp < USER_STACK - PGSIZE) {
-    PANIC("❌ Stack overflow: rsp too low!");
-	}
 }
 
 
@@ -337,18 +340,36 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: (Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	int cnt = 0;
+	struct thread *cur = thread_current();
+	struct list *cur_child_list = &(cur->child_list);
+	struct list_elem *e;
+	struct thread *child = NULL;
 
-	while(cnt < 700000000)
+	for (e = list_begin(cur_child_list); 
+	e != list_end(cur_child_list); e = list_next(e))
 	{
-		cnt++;
+		if(e == NULL){
+			break;
+		}
+		struct thread *is_child = list_entry(e, struct thread, child_elem);
+		if(is_child->tid == child_tid){
+			child = is_child;
+			break;
+		}
 	}
-	// while(1){
-		
-	// }
+
+	if (child == NULL)
+		return -1;
 	
+	sema_down(&(cur->exit_wait));
+
+	if(cur->child_exit_status != NULL){
+		return cur->child_exit_status;
+	}
+
 	return -1;
 }
+
 
 /* Exit the process. This function is called by thread_exit (). */
 void

@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -95,7 +96,6 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int64_t wakeup_tick;				// 꺠울시간
 	int priority;                       /* Priority. */
-	int64_t wakeup_tick;				/* 스레드를 깨워야하는 시간 */
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -106,8 +106,13 @@ struct thread {
 
 	struct thread *parent;				/*부모 쓰레드*/
 	struct list child_list;				/*자식 리스트*/
-	struct list_elem child_elem;		/*자식 리스트 elem*/
 	struct file *fd_table[FD_MAX];         /*fd table*/
+	struct list_elem child_elem;		/*자식 리스트 elem*/
+
+	int child_exit_status;
+
+	struct semaphore exit_wait;			/*프로세스 대기 세마포어 exec*/
+	
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -123,12 +128,7 @@ struct thread {
 	unsigned magic;                     /* Detects stack overflow. */
 };
 
-extern int64_t next_tick_to_awake;
-bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
-bool thread_priority_cmp(const struct list_elem *, const struct list_elem *, void *);
-void remove_with_lock(struct lock *lock);
-void refresh_priority(void);
-bool thread_donation_cmp(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.

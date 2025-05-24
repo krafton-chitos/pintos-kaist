@@ -1,7 +1,6 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include "include/lib/kernel/stdio.h"
-#include "lib/user/syscall.h"
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
@@ -12,11 +11,8 @@
 #include "userprog/process.h"
 #include "filesys/filesys.h"
 #include "include/filesys/file.h"
-
-// 유저 프로세스가 일부 커널 기능에 접근하려고 할때마다 시스템 콜이 호출된다.
-// 이게 시스템 콜 핸들러의 기본 구조
-// 현재 상태에서는 이때 단지 메세지를 출력하고 유저 프로세스를 종료시키게 되어있다. 
-// 시스템 콜이 필요로 하는 다른 일을 수행하는 코드를 수행
+#include "include/threads/synch.h"
+#include "devices/input.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -31,6 +27,11 @@ int sys_write(int , const void *, unsigned);
 void sys_exit (int);
 tid_t sys_fork (const char *, struct intr_frame *);
 tid_t sys_exec (const char*);
+int sys_read(int, void *, unsigned);
+int sys_filesize(int);
+int sys_wait(tid_t);
+
+struct lock file_lock; // file lock
 
 /* System call.
  *
@@ -56,6 +57,8 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+
+	lock_init(&file_lock);
 }
 
 /* The main system call interface */
@@ -69,9 +72,19 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			sys_halt();
 			break;
 		case SYS_EXEC:
-			sys_exec(f->R.rdi);
+			f->R.rax = sys_exec(f->R.rdi);
+			break;
 		case SYS_OPEN:
 			f->R.rax = sys_open(f->R.rdi);
+			break;
+		case SYS_WAIT:
+			f->R.rax = sys_wait(f->R.rdi);
+			break;
+		case SYS_READ:
+			f->R.rax = sys_read(f->R.rdi, f->R.rsi, f->R.rdx);
+			break;
+		case SYS_FILESIZE:
+			f->R.rax = sys_filesize(f->R.rdi);
 			break;
 		case SYS_CREATE:
 			f->R.rax = sys_create(f->R.rdi, f->R.rsi);
@@ -89,7 +102,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			sys_exit(f->R.rdi);
 			break;
 		default:
-			sys_exit(f->R.rdi);
+			sys_exit(-1);
 			break;
 	}
 
@@ -98,11 +111,10 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	
 }
 
-
-// 유저 주소 체크 함수 입니다.
+// 유저 주소 체크 함수
 void 
 check_user(const void *uaddr){
-	if (uaddr == NULL || !is_user_vaddr(uaddr) ||
+	if (uaddr == NULL || is_kernel_vaddr(uaddr) || 
 		pml4_get_page(thread_current()->pml4, uaddr) == NULL){
 		sys_exit(-1);
 	}
@@ -111,22 +123,50 @@ check_user(const void *uaddr){
 // 유저 버퍼 체크 함수
 void
 check_user_buffer(const void *uaddr, size_t size) {
+	void *start = uaddr;
 	for (size_t i = 0; i < size; i++){
-		check_user((const uint8_t *)uaddr + i);
+		check_user(start + i);
 	}
+}
+
+int
+sys_filesize(int fd){
+	struct thread *cur = thread_current();
+
+	if ((FD_START > fd) || (fd >= FD_MAX) 
+		|| (thread_current()->fd_table[fd] == NULL))
+		return -1;
+
+	lock_acquire(&file_lock);
+	int size = file_length(thread_current()->fd_table[fd]);
+	lock_release(&file_lock);
+
+	return size;
+}
+
+int
+sys_wait(tid_t child_tid){
+	return process_wait(child_tid);
 }
 
 bool 
 sys_create(const char *file, unsigned int initial_size) {
 	check_user(file);
-	return filesys_create(file, initial_size);
+
+	lock_acquire(&file_lock);
+	bool is_create = filesys_create(file, initial_size);
+	lock_release(&file_lock);
+
+	return is_create;
 }
 
 int
 sys_open (const char *file){
 	check_user(file);
 
+	lock_acquire(&file_lock);
 	struct file *f = filesys_open(file);
+	lock_release(&file_lock);
 
     if (f == NULL) return -1;
 	
@@ -152,17 +192,20 @@ check_fd_table(int fd){
 
 void 
 sys_close(int fd) {
-	if(check_fd_table(fd))
+	if(!check_fd_table(fd))
 		return;
 
 	struct file *f = thread_current()->fd_table[fd];
 
+	if (f == NULL)
+		return -1;
+
+	lock_acquire(&file_lock);
     file_close(f);
+	lock_release(&file_lock);
+
     thread_current()->fd_table[fd] = NULL;
 }
-
-
-
 
 void 
 sys_halt (void){
@@ -172,10 +215,50 @@ sys_halt (void){
 int
 sys_write(int fd, const void *buffer, unsigned size){
 	check_user_buffer(buffer, size); // 유저 버퍼 체크
+	struct thread *cur = thread_current ();
 
 	if(fd == 1){
-		putbuf((const char *)buffer, (size_t)size);
+		lock_acquire(&file_lock);
+		putbuf((char *)buffer, (size_t)size);
+		lock_release(&file_lock);
 		return size;
+	}
+
+	if((fd >= FD_START) && (fd < FD_MAX) && (cur->fd_table[fd] != NULL)){
+		struct file *openfile = cur->fd_table[fd];
+		lock_acquire(&file_lock);
+		int w_size = file_write(openfile, (void *)buffer, (off_t)size);
+		lock_release(&file_lock);
+		return w_size;
+	}
+
+	return -1;
+}
+
+int sys_read(int fd, void *buffer, unsigned size){
+	check_user_buffer(buffer, size); // 유저 버퍼 체크
+	struct thread *cur = thread_current ();
+
+	if(fd == 0){
+		// lock_acquire(&file_lock);
+		for (int i = 0; i < (int) size; i++){
+			char *buf = (char *) buffer;
+			buf[i] = input_getc();
+		// lock_release(&file_lock);
+		return size;
+		}
+	}
+
+	if(fd >= FD_START && fd < FD_MAX){
+		struct file *openfile = cur->fd_table[fd];
+
+		if (openfile == NULL)
+			return -1;
+
+		lock_acquire(&file_lock);
+		int r_size = file_read(openfile, buffer, size);
+		lock_release(&file_lock);
+		return r_size;
 	}
 
 	return -1;
@@ -185,6 +268,10 @@ void
 sys_exit (int status){
 	struct thread *cur = thread_current ();
 	
+	if(cur->parent != NULL){
+		cur->parent->child_exit_status = status;
+		sema_up(&(cur->parent->exit_wait));
+	}
 	printf ("%s: exit(%d)\n", cur->name, status); 
 	thread_exit ();
 }
@@ -196,8 +283,10 @@ sys_fork (const char *thread_name, struct intr_frame *if_ UNUSED){
 
 tid_t
 sys_exec (const char *cmd_line){
+	check_user(cmd_line);
+
 	if (process_exec(cmd_line) == -1){
-		return PID_ERROR;
+		return TID_ERROR;
 	}
 
 	return thread_current()->tid;
