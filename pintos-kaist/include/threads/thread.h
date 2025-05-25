@@ -107,11 +107,13 @@ struct thread {
 	struct thread *parent;				/*부모 쓰레드*/
 	struct list child_list;				/*자식 리스트*/
 	struct file *fd_table[FD_MAX];         /*fd table*/
-	struct list_elem child_elem;		/*자식 리스트 elem*/
+	struct child_info *my_info;
+	struct file *running_file;
 
-	int child_exit_status;
+	// int child_exit_status;
 
-	struct semaphore exit_wait;			/*프로세스 대기 세마포어 exec*/
+	// struct semaphore exit_wait;			/*프로세스 대기 세마포어 exec*/
+	// bool is_wait;
 	
 
 #ifdef USERPROG
@@ -128,6 +130,13 @@ struct thread {
 	unsigned magic;                     /* Detects stack overflow. */
 };
 
+struct child_info {
+  tid_t tid;
+  int exit_status;
+  bool is_waited;
+  struct semaphore exit_sema;
+  struct list_elem elem;
+};
 
 
 /* If false (default), use round-robin scheduler.

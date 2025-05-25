@@ -10,7 +10,7 @@
 #include "intrinsic.h"
 #include "userprog/process.h"
 #include "filesys/filesys.h"
-#include "include/filesys/file.h"
+#include "filesys/file.h"
 #include "include/threads/synch.h"
 #include "devices/input.h"
 
@@ -30,6 +30,7 @@ tid_t sys_exec (const char*);
 int sys_read(int, void *, unsigned);
 int sys_filesize(int);
 int sys_wait(tid_t);
+bool sys_remove (const char *);
 
 struct lock file_lock; // file lock
 
@@ -65,7 +66,7 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-
+	
 	switch (f->R.rax)
 	{
 		case SYS_HALT:
@@ -91,6 +92,12 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			break;
 		case SYS_CLOSE:
 			sys_close(f->R.rdi);
+			break;
+		case SYS_REMOVE:
+			f->R.rax = sys_remove(f->R.rdi);
+			break;
+		case SYS_SEEK:
+			sys_seek(f->R.rdi, f->R.rsi);
 			break;
 		case SYS_FORK:
 			f->R.rax = sys_fork(f->R.rdi, f);
@@ -120,13 +127,30 @@ check_user(const void *uaddr){
 	}
 }
 
-// 유저 버퍼 체크 함수
 void
 check_user_buffer(const void *uaddr, size_t size) {
-	void *start = uaddr;
-	for (size_t i = 0; i < size; i++){
-		check_user(start + i);
+	uint8_t *start = (uint8_t *) uaddr;
+	uint8_t *end = start + size;
+
+	while (start < end) {
+		if (!is_user_vaddr(start) || 
+			pml4_get_page(thread_current()->pml4, start) == NULL)
+			sys_exit(-1);
+
+		// 다음 페이지 경계로 이동
+		start = pg_round_down(start) + PGSIZE;
 	}
+}
+
+bool 
+sys_remove (const char *file){
+	check_user(file);
+
+	lock_acquire(&file_lock);
+	bool status = filesys_remove(file);
+	lock_release(&file_lock);
+
+	return status;
 }
 
 int
@@ -142,6 +166,24 @@ sys_filesize(int fd){
 	lock_release(&file_lock);
 
 	return size;
+}
+
+void
+sys_seek(int fd, unsigned position){
+	if(fd < 2){
+		return;
+	}
+
+	struct thread *curr = thread_current();
+	struct file *f = curr->fd_table[fd];
+
+	if(f == NULL){
+		return;
+	}
+
+	lock_acquire(&file_lock);
+	file_seek(f, position);
+	lock_release(&file_lock);
 }
 
 int
@@ -178,7 +220,7 @@ sys_open (const char *file){
 			return fd;
 		}
 	}
-	sys_exit(-1); 
+	return -1; 
 }
 
 
@@ -198,7 +240,7 @@ sys_close(int fd) {
 	struct file *f = thread_current()->fd_table[fd];
 
 	if (f == NULL)
-		return -1;
+		return;
 
 	lock_acquire(&file_lock);
     file_close(f);
@@ -268,11 +310,18 @@ void
 sys_exit (int status){
 	struct thread *cur = thread_current ();
 	
-	if(cur->parent != NULL){
-		cur->parent->child_exit_status = status;
-		sema_up(&(cur->parent->exit_wait));
+	printf ("%s: exit(%d)\n", cur->name, status);
+	
+	if (cur->my_info != NULL) {
+    	cur->my_info->exit_status = status;
+    	sema_up(&(cur->my_info->exit_sema));
 	}
-	printf ("%s: exit(%d)\n", cur->name, status); 
+
+	if(cur->running_file != NULL){
+		file_close(cur->running_file);
+	}
+
+	
 	thread_exit ();
 }
 
@@ -286,10 +335,9 @@ sys_exec (const char *cmd_line){
 	check_user(cmd_line);
 
 	if (process_exec(cmd_line) == -1){
-		return TID_ERROR;
+		sys_exit(-1);
 	}
 
 	return thread_current()->tid;
 }
-
 

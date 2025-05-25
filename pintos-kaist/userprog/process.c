@@ -186,8 +186,8 @@ __do_fork (void *aux) {
 
 	struct thread *current = thread_current ();
 
-	current->parent = parent;
-	list_push_front(&(parent->child_list), &(current->child_elem));
+	// current->parent = parent;
+	// list_push_front(&(parent->child_list), &());
 	if_.R.rax = 0;
 
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
@@ -245,6 +245,9 @@ int
 process_exec (void *f_name) { 
 	bool success;
 
+	if(f_name == NULL) return -1;
+	
+
 	char *fn_copy = palloc_get_page(PAL_ZERO); 
 	if (fn_copy == NULL) return -1;
 
@@ -272,17 +275,24 @@ process_exec (void *f_name) {
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
+	
 	/* We first kill the current context */
 	process_cleanup ();
 
 	/* And then load the binary */
 	success = load (file_name, &_if);
-	push_by_stack(&_if, argv, argc);
 	
 	/* If load failed, quit. */
-	palloc_free_page (fn_copy);
-	if (!success)
+
+
+	if (!success){
+		palloc_free_page (fn_copy);
 		return -1;
+	}
+
+
+	push_by_stack(&_if, argv, argc);
+	palloc_free_page (fn_copy);
 
 	/* Start switched process. */
 	do_iret (&_if);
@@ -293,12 +303,12 @@ static void
 push_by_stack(struct intr_frame *if_, char *argv[], int argc){
     char *arg_addr[argc];
 
-    
+    // argv[i]의 문자열 내용을 유저 스택에 복사
     for (int i = argc - 1; i >= 0 ; i--){
         size_t len = strlen(argv[i]) + 1;
         if_->rsp -= len;
         memcpy((void *)if_->rsp, argv[i], len);
-        arg_addr[i] = (char *)if_->rsp; 
+        arg_addr[i] = (char *)if_->rsp;  
     }
 
     // 8바이트 정렬
@@ -312,7 +322,7 @@ push_by_stack(struct intr_frame *if_, char *argv[], int argc){
     // argv[i] 주소들 복사 (역순)
     for (int i = argc - 1; i >= 0; i--) {
         if_->rsp -= 8;
-        memcpy((void *)if_->rsp, &arg_addr[i], 8); 
+        memcpy((void *)if_->rsp, &arg_addr[i], 8);
     }
 
     // rsi = argv, rdi = argc
@@ -323,6 +333,7 @@ push_by_stack(struct intr_frame *if_, char *argv[], int argc){
     if_->rsp -= 8;
     memset((void *)if_->rsp, 0, 8);
 }
+
 
 
 
@@ -340,46 +351,41 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: (Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	struct thread *cur = thread_current();
-	struct list *cur_child_list = &(cur->child_list);
-	struct list_elem *e;
-	struct thread *child = NULL;
+    struct thread *cur = thread_current();
+    struct list_elem *e;
+    struct child_info *child = NULL;
 
-	for (e = list_begin(cur_child_list); 
-	e != list_end(cur_child_list); e = list_next(e))
-	{
-		if(e == NULL){
-			break;
-		}
-		struct thread *is_child = list_entry(e, struct thread, child_elem);
-		if(is_child->tid == child_tid){
-			child = is_child;
-			break;
-		}
-	}
+    
+    for (e = list_begin(&cur->child_list); e != list_end(&cur->child_list); e = list_next(e)) {
+        struct child_info *t = list_entry(e, struct child_info, elem);
+        if (t->tid == child_tid) {
+            child = t;
+            break;
+        }
+    }
 
-	if (child == NULL)
-		return -1;
-	
-	sema_down(&(cur->exit_wait));
+    if (child == NULL || child->is_waited) {
+        return -1; 
+    }
 
-	if(cur->child_exit_status != NULL){
-		return cur->child_exit_status;
-	}
+    child->is_waited = true;
+    sema_down(&(child->exit_sema)); 
 
-	return -1;
+    int status = child->exit_status;
+	list_remove(&(child->elem));
+	palloc_free_page(child);
+
+    return status;
 }
 
 
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
-	struct thread *curr = thread_current ();
 	/* TODO: Your code goes here.
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-
 	process_cleanup ();
 }
 
@@ -501,10 +507,16 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* Open executable file. */
 	file = filesys_open (file_name);
+
+
+	
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
 	}
+
+	file_deny_write(file);
+	thread_current()->running_file = file;
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -585,7 +597,6 @@ load (const char *file_name, struct intr_frame *if_) {
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
 	return success;
 }
 
