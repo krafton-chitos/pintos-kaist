@@ -203,10 +203,23 @@ thread_create (const char *name, int priority,
 	/* Initialize thread. */
 	init_thread (t, name, priority);
 	tid = t->tid = allocate_tid ();
+	
+	struct child_info *info = palloc_get_page(PAL_ZERO);
 
-	list_push_front(&(thread_current()->child_list), &(t->child_elem));
+	if (info == NULL) {
+    	palloc_free_page(t);
+   		return TID_ERROR;
+	}
+
+	info->tid = t->tid;
+	info->exit_status = -1;
+	info->is_waited = false;
+	sema_init(&info->exit_sema, 0);
+
+	list_push_front(&(thread_current()->child_list), &(info->elem));
 
 	t->parent = thread_current();
+	t->my_info = info;
 	
 
 	/* Call the kernel_thread if it scheduled.
@@ -527,8 +540,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	list_init(&t->child_list); // child list 초기화
 	t->parent = NULL; 		   // 부모 쓰레드 초기값 null
 	memset(t->fd_table, 0, sizeof t->fd_table);
-	sema_init(&(t->exit_wait), 0);
-	t->child_exit_status = NULL;
+	t->my_info = NULL;
+	t->running_file = NULL;
 /////////////////////////////////////////////////////////////////////////////////////////////
 }
 

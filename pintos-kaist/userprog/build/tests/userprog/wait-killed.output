@@ -1,10 +1,10 @@
 Kernel command line: -q -f put wait-killed put child-bad run wait-killed
 0 ~ 9fc00 1
-100000 ~ 13e0000 1
+100000 ~ 1fe0000 1
 Pintos booting with: 
 	base_mem: 0x0 ~ 0x9fc00 (Usable: 639 kB)
-	ext_mem: 0x100000 ~ 0x13e0000 (Usable: 19,328 kB)
-Calibrating timer...  65,331,200 loops/s.
+	ext_mem: 0x100000 ~ 0x1fe0000 (Usable: 31,616 kB)
+Calibrating timer...  65,433,600 loops/s.
 hd0:0: detected 321 sector (160 kB) disk, model "QEMU HARDDISK", serial "QM00001"
 hd0:1: detected 20,160 sector (9 MB) disk, model "QEMU HARDDISK", serial "QM00002"
 hd1:0: detected 205 sector (102 kB) disk, model "QEMU HARDDISK", serial "QM00003"
@@ -16,14 +16,17 @@ Executing 'wait-killed':
 (wait-killed) begin
 (child-bad) begin
 load: pintos: open failed
-Page fault at 0x4033b1: not present error reading page in user context.
-child-bad: dying due to interrupt 0x0e (#PF Page-Fault Exception).
-Interrupt 0x0e (#PF Page-Fault Exception) at rip=4033b1
- cr2=00000000004033b1 error=               4
-rax ffffffffffffffff rbx 00000080042074f0 rcx 00000000004033b1 rdx 0000000000000000
-rsp 000000004747ff38 rbp 000000004747ff80 rsi 0000000000000000 rdi 0000000000404320
-rip 00000000004033b1 r8 0000000000000000  r9 0000000000000000 r10 0000000000000000
-r11 0000000000000212 r12 0000008004218946 r13 000000800424ac40 r14 0000008004227b20
-r15 000000800424ac40 rflags 00000212
-es: 001b ds: 001b cs: 0023 ss: 001b
-TIMEOUT
+child-bad: exit(-1)
+(wait-killed) wait(exec()) = -1
+(wait-killed) end
+wait-killed: exit(0)
+Execution of 'wait-killed' complete.
+Timer: 94 ticks
+Thread: 41 idle ticks, 46 kernel ticks, 8 user ticks
+hd0:0: 0 reads, 0 writes
+hd0:1: 170 reads, 448 writes
+hd1:0: 205 reads, 0 writes
+Console: 1011 characters output
+Keyboard: 0 keys pressed
+Exception: 0 page faults
+Powering off...
