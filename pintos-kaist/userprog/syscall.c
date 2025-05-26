@@ -220,7 +220,12 @@ sys_open (const char *file){
 			return fd;
 		}
 	}
-	return -1; 
+
+	/* FD 테이블이 가득 찼다면 열린 파일을 반드시 닫아 준다. */
+    lock_acquire (&file_lock);
+    file_close (f);
+    lock_release (&file_lock);
+	return -1;
 }
 
 
@@ -274,7 +279,7 @@ sys_write(int fd, const void *buffer, unsigned size){
 		return w_size;
 	}
 
-	return -1;
+	sys_exit(-1);
 }
 
 int sys_read(int fd, void *buffer, unsigned size){
@@ -282,20 +287,18 @@ int sys_read(int fd, void *buffer, unsigned size){
 	struct thread *cur = thread_current ();
 
 	if(fd == 0){
-		// lock_acquire(&file_lock);
 		for (int i = 0; i < (int) size; i++){
 			char *buf = (char *) buffer;
 			buf[i] = input_getc();
-		// lock_release(&file_lock);
-		return size;
 		}
+		return size;
 	}
 
 	if(fd >= FD_START && fd < FD_MAX){
 		struct file *openfile = cur->fd_table[fd];
 
 		if (openfile == NULL)
-			return -1;
+			sys_exit(-1);
 
 		lock_acquire(&file_lock);
 		int r_size = file_read(openfile, buffer, size);
@@ -303,24 +306,17 @@ int sys_read(int fd, void *buffer, unsigned size){
 		return r_size;
 	}
 
-	return -1;
+	sys_exit(-1);
 }
 
 void 
 sys_exit (int status){
 	struct thread *cur = thread_current ();
-	
-	printf ("%s: exit(%d)\n", cur->name, status);
-	
 	if (cur->my_info != NULL) {
     	cur->my_info->exit_status = status;
-    	sema_up(&(cur->my_info->exit_sema));
 	}
-
-	if(cur->running_file != NULL){
-		file_close(cur->running_file);
-	}
-
+	
+	printf ("%s: exit(%d)\n", cur->name, status);
 	
 	thread_exit ();
 }
