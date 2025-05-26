@@ -30,7 +30,7 @@ typedef int tid_t;
 #define PRI_MAX 63                      /* Highest priority. */
 
 #define FD_START 2						/*파일 디스크럽터 시작*/
-#define FD_MAX 128						/*파일 디스크럽터 끝 주소*/
+#define FD_MAX 64						/*파일 디스크럽터 끝 주소*/
 
 /* A kernel thread or user process.
  *

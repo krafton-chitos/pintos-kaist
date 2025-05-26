@@ -33,8 +33,8 @@ static void push_by_stack(struct intr_frame *, char *[], int);
 struct aux_arg{
 		struct thread *parent;
 		struct intr_frame if_;
-		struct fork_sync *sync;
-}aux_arg;
+		struct fork_sync_info *sync;
+};
 
 struct fork_sync_info {
 	struct semaphore sema;
@@ -220,11 +220,9 @@ __do_fork (void *aux) {
 	 * TODO:       the resources of parent.*/
 	for(int i = FD_START; i < FD_MAX; i++){
 		if (parent->fd_table[i] != NULL){
-			current->fd_table[i] = 
-			file_duplicate(parent->fd_table[i]);
+			current->fd_table[i] = file_duplicate(parent->fd_table[i]);
 		}
 	}
-	
 	process_init ();
 
 	/* Finally, switch to the newly created process. */
@@ -380,12 +378,36 @@ process_wait (tid_t child_tid UNUSED) {
 
 
 /* Exit the process. This function is called by thread_exit (). */
-void
 process_exit (void) {
 	/* TODO: Your code goes here.
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
+	struct thread *cur = thread_current ();
+
+	if(cur->running_file != NULL){
+		file_close(cur->running_file);
+		cur->running_file = NULL;
+	}
+
+	struct child_info *ci = cur->my_info;      /* 로컬 보관 */
+
+ 
+    sema_up (&ci->exit_sema);              /* 부모 깨우기 */
+    /* 부모가 wait()을 아직 하지 않았다면 직접 회수 */
+
+
+	for (int fd = 2; fd < FD_MAX; fd++) {
+    	if (cur->fd_table[fd] != NULL)
+        	file_close(cur->fd_table[fd]);
+	}
+
+	while (!list_empty (&cur->child_list)) {
+		struct list_elem *e = list_pop_front (&cur->child_list);
+		struct child_info *c = list_entry (e, struct child_info, elem);
+		palloc_free_page (c);
+	}
+
 	process_cleanup ();
 }
 
